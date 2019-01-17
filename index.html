@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html>
+  <head> 
+    <meta charset="UTF-8">
+    <title>Solidity Documentation</title>
+    
+    <link rel="stylesheet" type="text/css" href="index.css">
+  </head>
+<body>
+    <nav id="navbar">
+        <header>Solidity Documentation</header>
+        <ul> 
+          <a class="nav-link" href="#introduction_to_smart_contracts" rel="internal"><li>Introduction to Smart Contracts</li></a>
+          <a class="nav-link" href="#installing_the_solidity_compiler" rel="internal"><li>Installing the Solidity Compiler</li></a>
+          <a class="nav-link" href="#solidity_by_example" rel="internal"><li>Solidity by Example</li></a>
+          <a class="nav-link" href="#solidity_in_depth" rel="internal"><li>Solidity in Depth</li></a>
+          <a class="nav-link" href="#security_considerations" rel="internal"><li>Security Considerations</li></a>
+          <a class="nav-link" href="#using_the_compiler" rel="internal"><li>Using the Compiler</li></a>
+          <a class="nav-link" href="#contract_metadata" rel="internal"><li>Contract Metadata</li></a>
+          <a class="nav-link" href="#application_binary_interface_specification" rel="internal"><li>Application Binary Interface Specification</li></a>
+          <a class="nav-link" href="#style_guide" rel="internal"><li>Style Guide</li></a>
+          <a class="nav-link" href="#common_patterns" rel="internal"><li>Common Patterns</li></a>
+          <a class="nav-link" href="#list_of_known_bugs" rel="internal"><li>List of Known Bugs</li></a>
+          <a class="nav-link" href="#contributing" rel="internal"><li>Contributing</li></a>
+        </ul>
+      </nav>
+      <main id="main-doc">
+        <section class="main-section" id="introduction_to_smart_contracts">
+          <header>Introduction to Smart Contracts</header>
+          <article>  
+            <p>Solidity is a contract-oriented, high-level language for implementing smart contracts. It was influenced by C++, Python and JavaScript and is designed to target the Ethereum Virtual Machine (EVM).</p>
+      
+      <p>Solidity is statically typed, supports inheritance, libraries and complex user-defined types among other features.</p>
+      
+      <p> As you will see, it is possible to create contracts for voting, crowdfunding, blind auctions, multi-signature wallets and more.</p>
+      <p>Let us begin with the most basic example. It is fine if you do not understand everything right now, we will go into more detail later.</p>
+      <h3>Storage</h3>
+      <code>pragma solidity ^0.4.0;
+        contract SimpleStorage {
+            uint storedData;
+        
+            function set(uint x) public {
+                storedData = x;
+            }
+        
+            function get() public view returns (uint) {
+                return storedData;
+            }
+        }</code>
+        <p>The first line simply tells that the source code is written for Solidity version 0.4.0 or anything newer that does not break functionality (up to, but not including, version 0.5.0). This is to ensure that the contract does not suddenly behave differently with a new compiler version. The keyword pragma is called that way because, in general, pragmas are instructions for the compiler about how to treat the source code (e.g. pragma once).</p>
+        <p>A contract in the sense of Solidity is a collection of code (its functions) and data (its state) that resides at a specific address on the Ethereum blockchain. The line uint storedData; declares a state variable called storedData of type uint (unsigned integer of 256 bits). You can think of it as a single slot in a database that can be queried and altered by calling functions of the code that manages the database. In the case of Ethereum, this is always the owning contract. And in this case, the functions set and get can be used to modify or retrieve the value of the variable. </p>
+        <p>To access a state variable, you do not need the prefix this as is common in other languages.</p>
+        <p>This contract does not do much yet (due to the infrastructure built by Ethereum) apart from allowing anyone to store a single number that is accessible by anyone in the world without a (feasible) way to prevent you from publishing this number. Of course, anyone could just call set again with a different value and overwrite your number, but the number will still be stored in the history of the blockchain. Later, we will see how you can impose access restrictions so that only you can alter the number.</p>
+    </artice>
+    <h3> Subcurrency Example </h3>
+        <article> 
+            <p>The following contract will implement the simplest form of a cryptocurrency. It is possible to generate coins out of thin air, but only the person that created the contract will be able to do that (it is trivial to implement a different issuance scheme). Furthermore, anyone can send coins to each other without any need for registering with username and password - all you need is an Ethereum keypair.</p>
+            <code>pragma solidity ^0.4.21;
+                    contract Coin {
+                        // The keyword "public" makes those variables
+                        // readable from outside.
+                        address public minter;
+                        mapping (address => uint) public balances;
+                    
+                        // Events allow light clients to react on
+                        // changes efficiently.
+                        event Sent(address from, address to, uint amount);
+                    
+                        // This is the constructor whose code is
+                        // run only when the contract is created.
+                        function Coin() public {
+                            minter = msg.sender;
+                        }
+                    
+                        function mint(address receiver, uint amount) public {
+                            if (msg.sender != minter) return;
+                            balances[receiver] += amount;
+                        }
+                    
+                        function send(address receiver, uint amount) public {
+                            if (balances[msg.sender] < amount) return;
+                            balances[msg.sender] -= amount;
+                            balances[receiver] += amount;
+                            emit Sent(msg.sender, receiver, amount);
+                        }
+                    }  </code>
+            <p>This contract introduces some new concepts, let us go through them one by one.</p>
+            <p>The line address public minter; declares a state variable of type address that is publicly accessible. The address type is a 160-bit value that does not allow any arithmetic operations. It is suitable for storing addresses of contracts or keypairs belonging to external persons. The keyword public automatically generates a function that allows you to access the current value of the state variable from outside of the contract. Without this keyword, other contracts have no way to access the variable. The code of the function generated by the compiler is roughly equivalent to the following:</p>
+            <code>function minter() returns (address) { return minter; }</code>
+            <p>Of course, adding a function exactly like that will not work because we would have a function and a state variable with the same name, but hopefully, you get the idea - the compiler figures that out for you.</p>
+            <p>The next line, mapping (address => uint) public balances; also creates a public state variable, but it is a more complex datatype. The type maps addresses to unsigned integers. Mappings can be seen as hash tables which are virtually initialized such that every possible key exists and is mapped to a value whose byte-representation is all zeros. This analogy does not go too far, though, as it is neither possible to obtain a list of all keys of a mapping, nor a list of all values. So either keep in mind (or better, keep a list or use a more advanced data type) what you added to the mapping or use it in a context where this is not needed, like this one. The getter function created by the public keyword is a bit more complex in this case. It roughly looks like the following:</p>
+            <code>function balances(address _account) public view returns (uint) {
+                    return balances[_account];
+                }</code>
+            <p>As you see, you can use this function to easily query the balance of a single account.</p>
+            <p>The line event Sent(address from, address to, uint amount); declares a so-called “event” which is emitted in the last line of the function send. User interfaces (as well as server applications of course) can listen for those events being emitted on the blockchain without much cost. As soon as it is emitted, the listener will also receive the arguments from, to and amount, which makes it easy to track transactions. In order to listen for this event, you would use</p>
+            <code>Coin.Sent().watch({}, '', function(error, result) {
+                    if (!error) {
+                        console.log("Coin transfer: " + result.args.amount +
+                            " coins were sent from " + result.args.from +
+                            " to " + result.args.to + ".");
+                        console.log("Balances now:\n" +
+                            "Sender: " + Coin.balances.call(result.args.from) +
+                            "Receiver: " + Coin.balances.call(result.args.to));
+                    }
+                })</code>
+                <p>Note how the automatically generated function balances is called from the user interface.</p>
+                <p>The special function Coin is the constructor which is run during creation of the contract and cannot be called afterwards. It permanently stores the address of the person creating the contract: msg (together with tx and block) is a magic global variable that contains some properties which allow access to the blockchain. msg.sender is always the address where the current (external) function call came from.</p>
+                <p>Finally, the functions that will actually end up with the contract and can be called by users and contracts alike are mint and send. If mint is called by anyone except the account that created the contract, nothing will happen. On the other hand, send can be used by anyone (who already has some of these coins) to send coins to anyone else. Note that if you use this contract to send coins to an address, you will not see anything when you look at that address on a blockchain explorer, because the fact that you sent coins and the changed balances are only stored in the data storage of this particular coin contract. By the use of events it is relatively easy to create a “blockchain explorer” that tracks transactions and balances of your new coin.</p>
+            </article>
+          </section>
+        <section class="main-section" id="installing_the_solidity_compiler">
+          <header>Installing the Solidity Compiler</header>
+          <h3>Versioning</h3>
+          <article>
+            <p>Solidity versions follow semantic versioning and in addition to releases, nightly development builds are also made available. The nightly builds are not guaranteed to be working and despite best efforts they might contain undocumented and/or broken changes. We recommend using the latest release. Package installers below will use the latest release.</p>
+      
+          <h3>Remix</h3>
+            <p><i>We recommend Remix for small contracts and for quickly learning Solidity.</i></p>
+          <p> Access Remix online, you don’t need to install anything. If you want to use it without connection to the Internet, go to https://github.com/ethereum/browser-solidity/tree/gh-pages and download the .ZIP file as explained on that page. </p>
+          <p> Further options on this page detail installing commandline Solidity compiler software on your computer. Choose a commandline compiler if you are working on a larger contract or if you require more compilation options. </p>
+          <h3>npm / Node.js</h3>
+        <p> Use npm for a convenient and portable way to install solcjs, a Solidity compiler. The solcjs program has fewer features than all options further down this page. Our Using the Commandline Compiler documentation assumes you are using the full-featured compiler, solc. So if you install solcjs from npm then you will stop reading the documentation here and then continue to solc-js. </p>
+        <p> Note: The solc-js project is derived from the C++ solc by using Emscripten. solc-js can be used in JavaScript projects directly (such as Remix). Please refer to the solc-js repository for instructions.</p>
+        <code>npm install -g solc</code>
+        <h3>Docker</h3>
+        <p>We provide up to date docker builds for the compiler. The stable repository contains released versions while the nightly repository contains potentially unstable changes in the develop branch.</p>
+        <code>docker run ethereum/solc:stable solc --version</code>
+        <p>Currently, the docker image only contains the compiler executable, so you have to do some additional work to link in the source and output directories.</p>
+        <h3>Binary Packages</h3>
+        <p>Binary packages of Solidity are available at solidity/releases.</p>
+        <p>We also have PPAs for Ubuntu. For the latest stable version.</p>
+        <code>
+          sudo add-apt-repository ppa:ethereum/ethereum
+          sudo apt-get update
+          sudo apt-get install solc
+        </code>
+        <p>If you want to use the cutting edge developer version:</p>
+        <code>
+            sudo add-apt-repository ppa:ethereum/ethereum
+            sudo add-apt-repository ppa:ethereum/ethereum-dev
+            sudo apt-get update
+            sudo apt-get install solc
+          </code>
+        <p>
+          We are also releasing a snap package, which is installable in all the supported Linux distros. To install the latest stable version of solc:
+        </p>
+        <code> sudo snap install solc</code>
+        <p>Or if you want to help testing the unstable solc with the most recent changes from the development branch:</p>
+        <code> sudo snap install solc --edge</code>
+        <p>Arch Linux also has packages, albeit limited to the latest development version:</p>
+        <code>pacman -S solidity</code>
+        <p>Homebrew is missing pre-built bottles at the time of writing, following a Jenkins to TravisCI migration, but Homebrew should still work just fine as a means to build-from-source. We will re-add the pre-built bottles soon.</p>
+        <code>brew update
+          brew upgrade
+          brew tap ethereum/ethereum
+          brew install solidity</code>
+        <p>If you need a specific version of Solidity you can install a Homebrew formula directly from Github.</p>
+        <p>Follow the history links until you have a raw file link of a specific commit of solidity.rb.</p>
+        <p>Install it using <i>brew</li>: </p>
+        <code>brew unlink solidity
+          # Install 0.4.8
+          brew install https://raw.githubusercontent.com/ethereum/homebrew-ethereum/77cce03da9f289e5a3ffe579840d3c5dc0a62717/solidity.rb</code>
+        <p>Gentoo Linux also provides a solidity package that can be installed using emerge:</p>
+        <code>emerge dev-lang/solidity</code>
+        </artice>
+        </section>
+        <section class="main-section" id="solidity_by_example">
+          <header>Solidity by Example</header>
+          <article>
+          <h3>Voting</h3>
+          <p>The following contract is quite complex, but showcases a lot of Solidity’s features. It implements a voting contract. Of course, the main problems of electronic voting is how to assign voting rights to the correct persons and how to prevent manipulation. We will not solve all problems here, but at least we will show how delegated voting can be done so that vote counting is automatic and completely transparent at the same time.</p>
+          <p>The idea is to create one contract per ballot, providing a short name for each option. Then the creator of the contract who serves as chairperson will give the right to vote to each address individually.</p>
+          <p>The persons behind the addresses can then choose to either vote themselves or to delegate their vote to a person they trust.</p>
+          <p>At the end of the voting time, winningProposal() will return the proposal with the largest number of votes.</p>
+          <code>pragma solidity ^0.4.22;
+              /// @title Voting with delegation.
+              contract Ballot {
+                  // This declares a new complex type which will
+                  // be used for variables later.
+                  // It will represent a single voter.
+                  struct Voter {
+                      uint weight; // weight is accumulated by delegation
+                      bool voted;  // if true, that person already voted
+                      address delegate; // person delegated to
+                      uint vote;   // index of the voted proposal
+                  }
+              
+                  // This is a type for a single proposal.
+                  struct Proposal {
+                      bytes32 name;   // short name (up to 32 bytes)
+                      uint voteCount; // number of accumulated votes
+                  }
+              
+                  address public chairperson;
+              
+                  // This declares a state variable that
+                  // stores a `Voter` struct for each possible address.
+                  mapping(address => Voter) public voters;
+              
+                  // A dynamically-sized array of `Proposal` structs.
+                  Proposal[] public proposals;
+              
+                  /// Create a new ballot to choose one of `proposalNames`.
+                  constructor(bytes32[] proposalNames) public {
+                      chairperson = msg.sender;
+                      voters[chairperson].weight = 1;
+              
+                      // For each of the provided proposal names,
+                      // create a new proposal object and add it
+                      // to the end of the array.
+                      for (uint i = 0; i < proposalNames.length; i++) {
+                          // `Proposal({...})` creates a temporary
+                          // Proposal object and `proposals.push(...)`
+                          // appends it to the end of `proposals`.
+                          proposals.push(Proposal({
+                              name: proposalNames[i],
+                              voteCount: 0
+                          }));
+                      }
+                  }
+              
+                  // Give `voter` the right to vote on this ballot.
+                  // May only be called by `chairperson`.
+                  function giveRightToVote(address voter) public {
+                      // If the first argument of `require` evaluates
+                      // to `false`, execution terminates and all
+        
+                      // changes to the state and to Ether balances
+                      // are reverted.
+                      // This used to consume all gas in old EVM versions, but
+                      // not anymore.
+                      // It is often a good idea to use `require` to check if
+                      // functions are called correctly.
+                      // As a second argument, you can also provide an
+                      // explanation about what went wrong.
+                      require(
+                          msg.sender == chairperson,
+                          "Only chairperson can give right to vote."
+                      );
+                      require(
+                          !voters[voter].voted,
+                          "The voter already voted."
+                      );
+                      require(voters[voter].weight == 0);
+                      voters[voter].weight = 1;
+                  }
+              
+                  /// Delegate your vote to the voter `to`.
+                  function delegate(address to) public {
+                      // assigns reference
+                      Voter storage sender = voters[msg.sender];
+                      require(!sender.voted, "You already voted.");
+              
+                      require(to != msg.sender, "Self-delegation is disallowed.");
+              
+                      // Forward the delegation as long as
+                      // `to` also delegated.
+                      // In general, such loops are very dangerous,
+                      // because if they run too long, they might
+                      // need more gas than is available in a block.
+                      // In this case, the delegation will not be executed,
+                      // but in other situations, such loops might
+                      // cause a contract to get "stuck" completely.
+                      while (voters[to].delegate != address(0)) {
+                          to = voters[to].delegate;
+              
+                          // We found a loop in the delegation, not allowed.
+                          require(to != msg.sender, "Found loop in delegation.");
+                      }
+              
+                      // Since `sender` is a reference, this
+                      // modifies `voters[msg.sender].voted`
+                      sender.voted = true;
+                      sender.delegate = to;
+                      Voter storage delegate_ = voters[to];
+                      if (delegate_.voted) {
+                          // If the delegate already voted,
+                          // directly add to the number of votes
+                          proposals[delegate_.vote].voteCount += sender.weight;
+                      } else {
+                          // If the delegate did not vote yet,
+                          // add to her weight.
+                          delegate_.weight += sender.weight;
+                      }
+                  }
+              
+                  /// Give your vote (including votes delegated to you)
+                  /// to proposal `proposals[proposal].name`.
+                  function vote(uint proposal) public {
+                      Voter storage sender = voters[msg.sender];
+                      require(!sender.voted, "Already voted.");
+                      sender.voted = true;
+                      sender.vote = proposal;
+              
+                      // If `proposal` is out of the range of the array,
+                      // this will throw automatically and revert all
+                      // changes.
+                      proposals[proposal].voteCount += sender.weight;
+                  }
+              
+                  /// @dev Computes the winning proposal taking all
+                  /// previous votes into account.
+                  function winningProposal() public view
+                          returns (uint winningProposal_)
+                  {
+                      uint winningVoteCount = 0;
+                      for (uint p = 0; p < proposals.length; p++) {
+                          if (proposals[p].voteCount > winningVoteCount) {
+                              winningVoteCount = proposals[p].voteCount;
+                              winningProposal_ = p;
+                          }
+                      }
+                  }
+              
+                  // Calls winningProposal() function to get the index
+                  // of the winner contained in the proposals array and then
+                  // returns the name of the winner
+                  function winnerName() public view
+                          returns (bytes32 winnerName_)
+                  {
+                      winnerName_ = proposals[winningProposal()].name;
+                  }
+              }</code>
+          <h3>Possible Improvements</h3>
+          <p>Currently, many transactions are needed to assign the rights to vote to all participants. Can you think of a better way?</p>
+          <h3>Blind Auction</h3>
+          <p>In this section, we will show how easy it is to create a completely blind auction contract on Ethereum. We will start with an open auction where everyone can see the bids that are made and then extend this contract into a blind auction where it is not possible to see the actual bid until the bidding period ends.</p>
+          <h3>Simple Open Auction</h3>
+          <p>The general idea of the following simple auction contract is that everyone can send their bids during a bidding period. The bids already include sending money / ether in order to bind the bidders to their bid. If the highest bid is raised, the previously highest bidder gets her money back. After the end of the bidding period, the contract has to be called manually for the beneficiary to receive his money - contracts cannot activate themselves.</p>
+          <code>pragma solidity ^0.4.22;
+              contract SimpleAuction {
+                  // Parameters of the auction. Times are either
+                  // absolute unix timestamps (seconds since 1970-01-01)
+                  // or time periods in seconds.
+                  address public beneficiary;
+                  uint public auctionEnd;
+              
+                  // Current state of the auction.
+                  address public highestBidder;
+                  uint public highestBid;
+              
+                  // Allowed withdrawals of previous bids
+                  mapping(address => uint) pendingReturns;
+              
+                  // Set to true at the end, disallows any change
+                  bool ended;
+              
+                  // Events that will be fired on changes.
+                  event HighestBidIncreased(address bidder, uint amount);
+                  event AuctionEnded(address winner, uint amount);
+              
+                  // The following is a so-called natspec comment,
+                  // recognizable by the three slashes.
+                  // It will be shown when the user is asked to
+                  // confirm a transaction.
+              
+                  /// Create a simple auction with `_biddingTime`
+                  /// seconds bidding time on behalf of the
+                  /// beneficiary address `_beneficiary`.
+                  constructor(
+                      uint _biddingTime,
+                      address _beneficiary
+                  ) public {
+                      beneficiary = _beneficiary;
+                      auctionEnd = now + _biddingTime;
+                  }
+              
+                  /// Bid on the auction with the value sent
+                  /// together with this transaction.
+                  /// The value will only be refunded if the
+                  /// auction is not won.
+                  function bid() public payable {
+                      // No arguments are necessary, all
+                      // information is already part of
+                      // the transaction. The keyword payable
+                      // is required for the function to
+                      // be able to receive Ether.
+              
+                      // Revert the call if the bidding
+                      // period is over.
+                      require(
+                          now <= auctionEnd,
+                          "Auction already ended."
+                      );
+              
+                      // If the bid is not higher, send the
+                      // money back.
+                      require(
+                          msg.value > highestBid,
+                          "There already is a higher bid."
+                      );
+              
+                      if (highestBid != 0) {
+                          // Sending back the money by simply using
+                          // highestBidder.send(highestBid) is a security risk
+                          // because it could execute an untrusted contract.
+                          // It is always safer to let the recipients
+                          // withdraw their money themselves.
+                          pendingReturns[highestBidder] += highestBid;
+                      }
+                      highestBidder = msg.sender;
+                      highestBid = msg.value;
+                      emit HighestBidIncreased(msg.sender, msg.value);
+                  }
+              
+                  /// Withdraw a bid that was overbid.
+                  function withdraw() public returns (bool) {
+                      uint amount = pendingReturns[msg.sender];
+                      if (amount > 0) {
+                          // It is important to set this to zero because the recipient
+                          // can call this function again as part of the receiving call
+                          // before `send` returns.
+                          pendingReturns[msg.sender] = 0;
+              
+                          if (!msg.sender.send(amount)) {
+                              // No need to call throw here, just reset the amount owing
+                              pendingReturns[msg.sender] = amount;
+                              return false;
+                          }
+                      }
+                      return true;
+                  }
+              
+                  /// End the auction and send the highest bid
+                  /// to the beneficiary.
+                  function auctionEnd() public {
+                      // It is a good guideline to structure functions that interact
+                      // with other contracts (i.e. they call functions or send Ether)
+                      // into three phases:
+                      // 1. checking conditions
+                      // 2. performing actions (potentially changing conditions)
+                      // 3. interacting with other contracts
+                      // If these phases are mixed up, the other contract could call
+                      // back into the current contract and modify the state or cause
+                      // effects (ether payout) to be performed multiple times.
+                      // If functions called internally include interaction with external
+                      // contracts, they also have to be considered interaction with
+                      // external contracts.
+              
+                      // 1. Conditions
+                      require(now >= auctionEnd, "Auction not yet ended.");
+                      require(!ended, "auctionEnd has already been called.");
+              
+                      // 2. Effects
+                      ended = true;
+                      emit AuctionEnded(highestBidder, highestBid);
+              
+                      // 3. Interaction
+                      beneficiary.transfer(highestBid);
+                  }
+              }</code>
+            <h3>Blind Auction</h3>
+            <p>The previous open auction is extended to a blind auction in the following. The advantage of a blind auction is that there is no time pressure towards the end of the bidding period. Creating a blind auction on a transparent computing platform might sound like a contradiction, but cryptography comes to the rescue.</p>
+            <p>During the bidding period, a bidder does not actually send her bid, but only a hashed version of it. Since it is currently considered practically impossible to find two (sufficiently long) values whose hash values are equal, the bidder commits to the bid by that. After the end of the bidding period, the bidders have to reveal their bids: They send their values unencrypted and the contract checks that the hash value is the same as the one provided during the bidding period.</p>
+            <p>Another challenge is how to make the auction binding and blind at the same time: The only way to prevent the bidder from just not sending the money after he won the auction is to make her send it together with the bid. Since value transfers cannot be blinded in Ethereum, anyone can see the value.</p>
+            <p>The following contract solves this problem by accepting any value that is larger than the highest bid. Since this can of course only be checked during the reveal phase, some bids might be invalid, and this is on purpose (it even provides an explicit flag to place invalid bids with high value transfers): Bidders can confuse competition by placing several high or low invalid bids.</p>
+            <code>pragma solidity >0.4.23 0.5.0;
+              contract BlindAuction {
+                  struct Bid {
+                      bytes32 blindedBid;
+                      uint deposit;
+                  }
+              
+                  address public beneficiary;
+                  uint public biddingEnd;
+                  uint public revealEnd;
+                  bool public ended;
+              
+                  mapping(address => Bid[]) public bids;
+              
+                  address public highestBidder;
+                  uint public highestBid;
+              
+                  // Allowed withdrawals of previous bids
+                  mapping(address => uint) pendingReturns;
+              
+                  event AuctionEnded(address winner, uint highestBid);
+              
+                  /// Modifiers are a convenient way to validate inputs to
+                  /// functions. `onlyBefore` is applied to `bid` below:
+                  /// The new function body is the modifier's body where
+                  /// `_` is replaced by the old function body.
+                  modifier onlyBefore(uint _time) { require(now < _time); _; }
+                  modifier onlyAfter(uint _time) { require(now > _time); _; }
+              
+                  constructor(
+                      uint _biddingTime,
+                      uint _revealTime,
+                      address _beneficiary
+                  ) public {
+                      beneficiary = _beneficiary;
+                      biddingEnd = now + _biddingTime;
+                      revealEnd = biddingEnd + _revealTime;
+                  }
+              
+                  /// Place a blinded bid with `_blindedBid` = keccak256(value,
+                  /// fake, secret).
+                  /// The sent ether is only refunded if the bid is correctly
+                  /// revealed in the revealing phase. The bid is valid if the
+                  /// ether sent together with the bid is at least "value" and
+                  /// "fake" is not true. Setting "fake" to true and sending
+                  /// not the exact amount are ways to hide the real bid but
+                  /// still make the required deposit. The same address can
+                  /// place multiple bids.
+                  function bid(bytes32 _blindedBid)
+                      public
+                      payable
+                      onlyBefore(biddingEnd)
+                  {
+                      bids[msg.sender].push(Bid({
+                          blindedBid: _blindedBid,
+                          deposit: msg.value
+                      }));
+                  }
+              
+                  /// Reveal your blinded bids. You will get a refund for all
+                  /// correctly blinded invalid bids and for all bids except for
+                  /// the totally highest.
+                  function reveal(
+                      uint[] _values,
+                      bool[] _fake,
+                      bytes32[] _secret
+                  )
+                      public
+                      onlyAfter(biddingEnd)
+                      onlyBefore(revealEnd)
+                  {
+                      uint length = bids[msg.sender].length;
+                      require(_values.length == length);
+                      require(_fake.length == length);
+                      require(_secret.length == length);
+              
+                      uint refund;
+                      for (uint i = 0; i < length; i++) {
+                          Bid storage bid = bids[msg.sender][i];
+                          (uint value, bool fake, bytes32 secret) =
+                                  (_values[i], _fake[i], _secret[i]);
+                          if (bid.blindedBid != keccak256(value, fake, secret)) {
+                              // Bid was not actually revealed.
+                              // Do not refund deposit.
+                              continue;
+                          }
+                          refund += bid.deposit;
+                          if (!fake && bid.deposit >= value) {
+                              if (placeBid(msg.sender, value))
+                                  refund -= value;
+                          }
+                          // Make it impossible for the sender to re-claim
+                          // the same deposit.
+                          bid.blindedBid = bytes32(0);
+                      }
+                      msg.sender.transfer(refund);
+                  }
+              
+                  // This is an "internal" function which means that it
+                  // can only be called from the contract itself (or from
+                  // derived contracts).
+                  function placeBid(address bidder, uint value) internal
+                          returns (bool success)
+                  {
+                      if (value <= highestBid) {
+                          return false;
+                      }
+                      if (highestBidder != 0) {
+                          // Refund the previously highest bidder.
+                          pendingReturns[highestBidder] += highestBid;
+                      }
+                      highestBid = value;
+                      highestBidder = bidder;
+                      return true;
+                  }
+              
+                  /// Withdraw a bid that was overbid.
+                  function withdraw() public {
+                      uint amount = pendingReturns[msg.sender];
+                      if (amount > 0) {
+                          // It is important to set this to zero because the recipient
+                          // can call this function again as part of the receiving call
+                          // before `transfer` returns (see the remark above about
+                          // conditions -> effects -> interaction).
+                          pendingReturns[msg.sender] = 0;
+              
+                          msg.sender.transfer(amount);
+                      }
+                  }
+              
+                  /// End the auction and send the highest bid
+                  /// to the beneficiary.
+                  function auctionEnd()
+                      public
+                      onlyAfter(revealEnd)
+                  {
+                      require(!ended);
+                      emit AuctionEnded(highestBidder, highestBid);
+                      ended = true;
+                      beneficiary.transfer(highestBid);
+                  }
+              }</code>
+              <h3>Safe Remote Purchase</h3>
+              <code>pragma solidity ^0.4.22;
+                  contract Purchase {
+                      uint public value;
+                      address public seller;
+                      address public buyer;
+                      enum State { Created, Locked, Inactive }
+                      State public state;
+                  
+                      // Ensure that `msg.value` is an even number.
+                      // Division will truncate if it is an odd number.
+                      // Check via multiplication that it wasn't an odd number.
+                      constructor() public payable {
+                          seller = msg.sender;
+                          value = msg.value / 2;
+                          require((2 * value) == msg.value, "Value has to be even.");
+                      }
+                  
+                      modifier condition(bool _condition) {
+                          require(_condition);
+                          _;
+                      }
+                  
+                      modifier onlyBuyer() {
+                          require(
+                              msg.sender == buyer,
+                              "Only buyer can call this."
+                          );
+                          _;
+                      }
+                  
+                      modifier onlySeller() {
+                          require(
+                              msg.sender == seller,
+                              "Only seller can call this."
+                          );
+                          _;
+                      }
+                  
+                      modifier inState(State _state) {
+                          require(
+                              state == _state,
+                              "Invalid state."
+                          );
+                          _;
+                      }
+                  
+                      event Aborted();
+                      event PurchaseConfirmed();
+                      event ItemReceived();
+                  
+                      /// Abort the purchase and reclaim the ether.
+                      /// Can only be called by the seller before
+                      /// the contract is locked.
+                      function abort()
+                          public
+                          onlySeller
+                          inState(State.Created)
+                      {
+                          emit Aborted();
+                          state = State.Inactive;
+                          seller.transfer(address(this).balance);
+                      }
+                  
+                      /// Confirm the purchase as buyer.
+                      /// Transaction has to include `2 * value` ether.
+                      /// The ether will be locked until confirmReceived
+                      /// is called.
+                      function confirmPurchase()
+                          public
+                          inState(State.Created)
+                          condition(msg.value == (2 * value))
+                          payable
+                      {
+                          emit PurchaseConfirmed();
+                          buyer = msg.sender;
+                          state = State.Locked;
+                      }
+                  
+                      /// Confirm that you (the buyer) received the item.
+                      /// This will release the locked ether.
+                      function confirmReceived()
+                          public
+                          onlyBuyer
+                          inState(State.Locked)
+                      {
+                          emit ItemReceived();
+                          // It is important to change the state first because
+                          // otherwise, the contracts called using `send` below
+                          // can call in again here.
+                          state = State.Inactive;
+                  
+                          // NOTE: This actually allows both the buyer and the seller to
+                          // block the refund - the withdraw pattern should be used.
+                  
+                          buyer.transfer(value);
+                          seller.transfer(address(this).balance);
+                      }
+                  }</code>
+              <h3>Micropayment Channel</h3>
+              <p>To be written.</p>
+          </article>
+          </section>
+        <section class="main-section" id="solidity_in_depth">
+          <header>Solidity in Depth</header>
+          <article> 
+          <h3>Structure of a Contract</h3>
+          <p>Contracts in Solidity are similar to classes in object-oriented languages. Each contract can contain declarations of State Variables, Functions, Function Modifiers, Events, Struct Types and Enum Types. Furthermore, contracts can inherit from other contracts.</p>
+          <h3>State Variables</h3>
+          <p>State variables are values which are permanently stored in contract storage.</p>
+          <code>pragma solidity ^0.4.0;
+              contract SimpleStorage {
+                  uint storedData; // State variable
+                  // ...
+              }</code>
+          <p>See the Types section for valid state variable types and Visibility and Getters for possible choices for visibility.</p>
+          <h3>Functions</h3>
+          <p>Functions are the executable units of code within a contract.</p>
+          <code>pragma solidity ^0.4.0;
+              contract SimpleAuction {
+                  function bid() public payable { // Function
+                      // ...
+                  }
+              }</code>
+          <p>Function Calls can happen internally or externally and have different levels of visibility (Visibility and Getters) towards other contracts.</p>
+          <h3>Function Modifiers</h3>
+          <p>Function modifiers can be used to amend the semantics of functions in a declarative way (see Function Modifiers in contracts section).</p>
+          <code>pragma solidity ^0.4.22;
+              contract Purchase {
+                  address public seller;
+              
+                  modifier onlySeller() { // Modifier
+                      require(
+                          msg.sender == seller,
+                          "Only seller can call this."
+                      );
+                      _;
+                  }
+              
+                  function abort() public onlySeller { // Modifier usage
+                      // ...
+                  }
+              }</code>
+          <h3>Events</h3>
+          <p>Events are convenience interfaces with the EVM logging facilities.</p>
+          <code>pragma solidity ^0.4.21;
+              contract SimpleAuction {
+                  event HighestBidIncreased(address bidder, uint amount); // Event
+              
+                  function bid() public payable {
+                      // ...
+                      emit HighestBidIncreased(msg.sender, msg.value); // Triggering event
+                  }
+              }</code>
+            <p>See Events in contracts section for information on how events are declared and can be used from within a dapp.</p>
+            <h3>Struct Types</h3>
+            <p>Structs are custom defined types that can group several variables (see Structs in types section).</p>
+            <code>pragma solidity ^0.4.0;
+                contract Ballot {
+                    struct Voter { // Struct
+                        uint weight;
+                        bool voted;
+                        address delegate;
+                        uint vote;
+                    }
+                }</code>
+            <h3>Enum Types</h3>
+            <p>Enums can be used to create custom types with a finite set of ‘constant values’ (see Enums in types section).</p>
+            <code>pragma solidity ^0.4.0;
+                contract Purchase {
+                    enum State { Created, Locked, Inactive } // Enum
+                }</code>
+              <p></p>
+        </section>
+        <section class="main-section" id="security_considerations">
+                <header>Security Considerations</header>
+                <article>
+                  <p>While it is usually quite easy to build software that works as expected, it is much harder to check that nobody can use it in a way that was not anticipated.</p>
+                  <p>In Solidity, this is even more important because you can use smart contracts to handle tokens or, possibly, even more valuable things. Furthermore, every execution of a smart contract happens in public and, in addition to that, the source code is often available.</p>
+                  <p>Of course you always have to consider how much is at stake: You can compare a smart contract with a web service that is open to the public (and thus, also to malicious actors) and perhaps even open source. If you only store your grocery list on that web service, you might not have to take too much care, but if you manage your bank account using that web service, you should be more careful.</p>
+                  <p>This section will list some pitfalls and general security recommendations but can, of course, never be complete. Also, keep in mind that even if your smart contract code is bug-free, the compiler or the platform itself might have a bug. A list of some publicly known security-relevant bugs of the compiler can be found in the list of known bugs, which is also machine-readable. Note that there is a bug bounty program that covers the code generator of the Solidity compiler.</p>
+                  <p>As always, with open source documentation, please help us extend this section (especially, some examples would not hurt)!</p>
+                  <h3>Pitfalls</h3>
+                  <h4>Private Information and Randomness</h4>
+                  <p>Everything you use in a smart contract is publicly visible, even local variables and state variables marked private.</p>
+                  <p>Using random numbers in smart contracts is quite tricky if you do not want miners to be able to cheat.</p>
+                  <h3>Re-Entrancy</h3>
+                  <p>Any interaction from a contract (A) with another contract (B) and any transfer of Ether hands over control to that contract (B). This makes it possible for B to call back into A before this interaction is completed. To give an example, the following code contains a bug (it is just a snippet and not a complete contract):</p>
+                  <code>pragma solidity ^0.4.0;
+      // THIS CONTRACT CONTAINS A BUG - DO NOT USE
+      contract Fund {
+          /// Mapping of ether shares of the contract.
+          mapping(address => uint) shares;
+          /// Withdraw your share.
+          function withdraw() public {
+              if (msg.sender.send(shares[msg.sender]))
+                  shares[msg.sender] = 0;
+          }
+      } </code>
+              <p>The problem is not too serious here because of the limited gas as part of send, but it still exposes a weakness: Ether transfer can always include code execution, so the recipient could be a contract that calls back into withdraw. This would let it get multiple refunds and basically retrieve all the Ether in the contract. In particular, the following contract will allow an attacker to refund multiple times as it uses call which forwards all remaining gas by default:</p>
+              <code>pragma solidity ^0.4.0;
+                  // THIS CONTRACT CONTAINS A BUG - DO NOT USE
+                  contract Fund {
+                      /// Mapping of ether shares of the contract.
+                      mapping(address => uint) shares;
+                      /// Withdraw your share.
+                      function withdraw() public {
+                          if (msg.sender.call.value(shares[msg.sender])())
+                              shares[msg.sender] = 0;
+                      }
+                  }</code>
+                <p>To avoid re-entrancy, you can use the Checks-Effects-Interactions pattern as outlined further below:</p>
+                <code>pragma solidity ^0.4.11;
+                    contract Fund {
+                        /// Mapping of ether shares of the contract.
+                        mapping(address => uint) shares;
+                        /// Withdraw your share.
+                        function withdraw() public {
+                            var share = shares[msg.sender];
+                            shares[msg.sender] = 0;
+                            msg.sender.transfer(share);
+                        }
+                    }</code>
+                  <p>Note that re-entrancy is not only an effect of Ether transfer but of any function call on another contract. Furthermore, you also have to take multi-contract situations into account. A called contract could modify the state of another contract you depend on.</p>
+                  <h3>Gas Limit and Loops</h3>
+                  <p>Loops that do not have a fixed number of iterations, for example, loops that depend on storage values, have to be used carefully: Due to the block gas limit, transactions can only consume a certain amount of gas. Either explicitly or just due to normal operation, the number of iterations in a loop can grow beyond the block gas limit which can cause the complete contract to be stalled at a certain point. This may not apply to view functions that are only executed to read data from the blockchain. Still, such functions may be called by other contracts as part of on-chain operations and stall those. Please be explicit about such cases in the documentation of your contracts.</p>
+                  <h3>Sending and Receiving Ether</h3>
+                  <p><ul>Neither contracts nor “external accounts” are currently able to prevent that someone sends them Ether. Contracts can react on and reject a regular transfer, but there are ways to move Ether without creating a message call. One way is to simply “mine to” the contract address and the second way is using selfdestruct(x).</ul></p>
+                  <p><ul>If a contract receives Ether (without a function being called), the fallback function is executed. If it does not have a fallback function, the Ether will be rejected (by throwing an exception). During the execution of the fallback function, the contract can only rely on the “gas stipend” (2300 gas) being available to it at that time. This stipend is not enough to access storage in any way. To be sure that your contract can receive Ether in that way, check the gas requirements of the fallback function (for example in the “details” section in Remix).</ul></p>
+                  <p><ul>There is a way to forward more gas to the receiving contract using addr.call.value(x)(). This is essentially the same as addr.transfer(x), only that it forwards all remaining gas and opens up the ability for the recipient to perform more expensive actions (and it only returns a failure code and does not automatically propagate the error). This might include calling back into the sending contract or other state changes you might not have thought of. So it allows for great flexibility for honest users but also for malicious actors.</ul></p>
+                  <p><ul>If you want to send Ether using address.transfer, there are certain details to be aware of:</ul></p>
+                  <p><li>If the recipient is a contract, it causes its fallback function to be executed which can, in turn, call back the sending contract.</li></p>
+                  <p><li>Sending Ether can fail due to the call depth going above 1024. Since the caller is in total control of the call depth, they can force the transfer to fail; take this possibility into account or use send and make sure to always check its return value. Better yet, write your contract using a pattern where the recipient can withdraw Ether instead.</li></p>
+                  <p><li>Sending Ether can also fail because the execution of the recipient contract requires more than the allotted amount of gas (explicitly by using require, assert, revert, throw or because the operation is just too expensive) - it “runs out of gas” (OOG). If you use transfer or send with a return value check, this might provide a means for the recipient to block progress in the sending contract. Again, the best practice here is to use a “withdraw” pattern instead of a “send” pattern.</li></p>
+                  <h3>Callstack Depth</h3>
+                  <p>External function calls can fail any time because they exceed the maximum call stack of 1024. In such situations, Solidity throws an exception. Malicious actors might be able to force the call stack to a high value before they interact with your contract.</p>
+                  <p>Note that .send() does not throw an exception if the call stack is depleted but rather returns false in that case. The low-level functions .call(), .callcode() and .delegatecall() behave in the same way.</p>
+                  <h3>tx.origin</h3>
+                  <p>Never use tx.origin for authorization. Let’s say you have a wallet contract like this:</p>
+                  <code>pragma solidity ^0.4.11;
+                      // THIS CONTRACT CONTAINS A BUG - DO NOT USE
+                      contract TxUserWallet {
+                          address owner;
+                      
+                          function TxUserWallet() public {
+                              owner = msg.sender;
+                          }
+                      
+                          function transferTo(address dest, uint amount) public {
+                              require(tx.origin == owner);
+                              dest.transfer(amount);
+                          }
+                      }
+                      </code>
+                    <p>Now someone tricks you into sending ether to the address of this attack wallet:</p>
+                    <code>pragma solidity ^0.4.11;
+                        interface TxUserWallet {
+                            function transferTo(address dest, uint amount) public;
+                        }
+                        
+                        contract TxAttackWallet {
+                            address owner;
+                        
+                            function TxAttackWallet() public {
+                                owner = msg.sender;
+                            }
+                        
+                            function() public {
+                                TxUserWallet(msg.sender).transferTo(owner, msg.sender.balance);
+                            }
+                        }
+                        </code>
+                      <p>If your wallet had checked msg.sender for authorization, it would get the address of the attack wallet, instead of the owner address. But by checking tx.origin, it gets the original address that kicked off the transaction, which is still the owner address. The attack wallet instantly drains all your funds.</p>
+                      <h3>Minor Details</h3>
+                      <p><ul>In for (var i = 0; i < arrayName.length; i++) { ... }, the type of i will be uint8, because this is the smallest type that is required to hold the value 0. If the array has more than 255 elements, the loop will not terminate.</ul></p>
+                      <p><ul>Types that do not occupy the full 32 bytes might contain “dirty higher order bits”. This is especially important if you access msg.data - it poses a malleability risk: You can craft transactions that call a function f(uint8 x) with a raw byte argument of 0xff000001 and with 0x00000001. Both are fed to the contract and both will look like the number 1 as far as x is concerned, but msg.data will be different, so if you use keccak256(msg.data) for anything, you will get different results.</ul></p>
+                      
+                </article>
+                </section>
+        <section class="main-section" id="using_the_compiler">
+          <header>Using the compiler</header>
+          <p>One of the build targets of the Solidity repository is solc, the solidity commandline compiler. Using solc --help provides you with an explanation of all options. The compiler can produce various outputs, ranging from simple binaries and assembly over an abstract syntax tree (parse tree) to estimations of gas usage. If you only want to compile a single file, you run it as solc --bin sourceFile.sol and it will print the binary. If you want to get some of the more advanced output variants of solc, it is probably better to tell it to output everything to separate files using solc -o outputDirectory --bin --ast --asm sourceFile.sol.</p>
+          <p>Before you deploy your contract, activate the optimizer while compiling using solc --optimize --bin sourceFile.sol. By default, the optimizer will optimize the contract for 200 runs. If you want to optimize for initial contract deployment and get the smallest output, set it to --runs=1. If you expect many transactions and don’t care for higher deployment cost and output size, set --runs to a high number.</p>
+          <p>The commandline compiler will automatically read imported files from the filesystem, but it is also possible to provide path redirects using prefix=path in the following way:</p>
+          <code>solc github.com/ethereum/dapp-bin/=/usr/local/lib/dapp-bin/ =/usr/local/lib/fallback file.sol</code>
+          <p>This essentially instructs the compiler to search for anything starting with github.com/ethereum/dapp-bin/ under /usr/local/lib/dapp-bin and if it does not find the file there, it will look at /usr/local/lib/fallback (the empty prefix always matches). solc will not read files from the filesystem that lie outside of the remapping targets and outside of the directories where explicitly specified source files reside, so things like import "/etc/passwd"; only work if you add =/ as a remapping.</p>
+          <p>If there are multiple matches due to remappings, the one with the longest common prefix is selected.</p>
+          <p>For security reasons the compiler has restrictions what directories it can access. Paths (and their subdirectories) of source files specified on the commandline and paths defined by remappings are allowed for import statements, but everything else is rejected. Additional paths (and their subdirectories) can be allowed via the --allow-paths /sample/path,/another/sample/path switch.</p>
+          <p>If your contracts use libraries, you will notice that the bytecode contains substrings of the form __LibraryName______. You can use solc as a linker meaning that it will insert the library addresses for you at those points:</p>
+          <p>Either add --libraries "Math:0x12345678901234567890 Heap:0xabcdef0123456" to your command to provide an address for each library or store the string in a file (one library per line) and run solc using --libraries fileName.</p>
+          <p>If solc is called with the option --link, all input files are interpreted to be unlinked binaries (hex-encoded) in the __LibraryName____-format given above and are linked in-place (if the input is read from stdin, it is written to stdout). All options except --libraries are ignored (including -o) in this case.</p>
+          <p>If solc is called with the option --standard-json, it will expect a JSON input (as explained below) on the standard input, and return a JSON output on the standard output.</p>
+          <h3>Compiler Input and Output JSON Description</h3>
+          <p>These JSON formats are used by the compiler API as well as are available through solc. These are subject to change, some fields are optional (as noted), but it is aimed at to only make backwards compatible changes.</p>
+          <p>The compiler API expects a JSON formatted input and outputs the compilation result in a JSON formatted output.</p>
+          <p>Comments are of course not permitted and used here only for explanatory purposes.</p>
+          <h3>Input Description</h3>
+          <code>
+              {
+                // Required: Source code language, such as "Solidity", "serpent", "lll", "assembly", etc.
+                language: "Solidity",
+                // Required
+                sources:
+                {
+                  // The keys here are the "global" names of the source files,
+                  // imports can use other files via remappings (see below).
+                  "myFile.sol":
+                  {
+                    // Optional: keccak256 hash of the source file
+                    // It is used to verify the retrieved content if imported via URLs.
+                    "keccak256": "0x123...",
+                    // Required (unless "content" is used, see below): URL(s) to the source file.
+                    // URL(s) should be imported in this order and the result checked against the
+                    // keccak256 hash (if available). If the hash doesn't match or none of the
+                    // URL(s) result in success, an error should be raised.
+                    "urls":
+                    [
+                      "bzzr://56ab...",
+                      "ipfs://Qma...",
+                      "file:///tmp/path/to/file.sol"
+                    ]
+                  },
+                  "mortal":
+                  {
+                    // Optional: keccak256 hash of the source file
+                    "keccak256": "0x234...",
+                    // Required (unless "urls" is used): literal contents of the source file
+                    "content": "contract mortal is owned { function kill() { if (msg.sender == owner) selfdestruct(owner); } }"
+                  }
+                },
+                // Optional
+                settings:
+                {
+                  // Optional: Sorted list of remappings
+                  remappings: [ ":g/dir" ],
+                  // Optional: Optimizer settings
+                  optimizer: {
+                    // disabled by default
+                    enabled: true,
+                    // Optimize for how many times you intend to run the code.
+                    // Lower values will optimize more for initial deployment cost, higher values will optimize more for high-frequency usage.
+                    runs: 200
+                  },
+                  evmVersion: "byzantium", // Version of the EVM to compile for. Affects type checking and code generation. Can be homestead, tangerineWhistle, spuriousDragon, byzantium or constantinople
+                  // Metadata settings (optional)
+                  metadata: {
+                    // Use only literal content and not URLs (false by default)
+                    useLiteralContent: true
+                  },
+                  // Addresses of the libraries. If not all libraries are given here, it can result in unlinked objects whose output data is different.
+                  libraries: {
+                    // The top level key is the the name of the source file where the library is used.
+                    // If remappings are used, this source file should match the global path after remappings were applied.
+                    // If this key is an empty string, that refers to a global level.
+                    "myFile.sol": {
+                      "MyLib": "0x123123..."
+                    }
+                  }
+                  // The following can be used to select desired outputs.
+                  // If this field is omitted, then the compiler loads and does type checking, but will not generate any outputs apart from errors.
+                  // The first level key is the file name and the second is the contract name, where empty contract name refers to the file itself,
+                  // while the star refers to all of the contracts.
+                  //
+                  // The available output types are as follows:
+                  //   abi - ABI
+                  //   ast - AST of all source files
+                  //   legacyAST - legacy AST of all source files
+                  //   devdoc - Developer documentation (natspec)
+                  //   userdoc - User documentation (natspec)
+                  //   metadata - Metadata
+                  //   ir - New assembly format before desugaring
+                  //   evm.assembly - New assembly format after desugaring
+                  //   evm.legacyAssembly - Old-style assembly format in JSON
+                  //   evm.bytecode.object - Bytecode object
+                  //   evm.bytecode.opcodes - Opcodes list
+                  //   evm.bytecode.sourceMap - Source mapping (useful for debugging)
+                  //   evm.bytecode.linkReferences - Link references (if unlinked object)
+                  //   evm.deployedBytecode* - Deployed bytecode (has the same options as evm.bytecode)
+                  //   evm.methodIdentifiers - The list of function hashes
+                  //   evm.gasEstimates - Function gas estimates
+                  //   ewasm.wast - eWASM S-expressions format (not supported atm)
+                  //   ewasm.wasm - eWASM binary format (not supported atm)
+                  //
+                  // Note that using a using `evm`, `evm.bytecode`, `ewasm`, etc. will select every
+                  // target part of that output. Additionally, `*` can be used as a wildcard to request everything.
+                  //
+                  outputSelection: {
+                    // Enable the metadata and bytecode outputs of every single contract.
+                    "*": {
+                      "*": [ "metadata", "evm.bytecode" ]
+                    },
+                    // Enable the abi and opcodes output of MyContract defined in file def.
+                    "def": {
+                      "MyContract": [ "abi", "evm.bytecode.opcodes" ]
+                    },
+                    // Enable the source map output of every single contract.
+                    "*": {
+                      "*": [ "evm.bytecode.sourceMap" ]
+                    },
+                    // Enable the legacy AST output of every single file.
+                    "*": {
+                      "": [ "legacyAST" ]
+                    }
+                  }
+                }
+              }
+          </code>
+          <h3>Output Description</h3>
+          <p>{
+              // Optional: not present if no errors/warnings were encountered
+              errors: [
+                {
+                  // Optional: Location within the source file.
+                  sourceLocation: {
+                    file: "sourceFile.sol",
+                    start: 0,
+                    end: 100
+                  ],
+                  // Mandatory: Error type, such as "TypeError", "InternalCompilerError", "Exception", etc.
+                  // See below for complete list of types.
+                  type: "TypeError",
+                  // Mandatory: Component where the error originated, such as "general", "ewasm", etc.
+                  component: "general",
+                  // Mandatory ("error" or "warning")
+                  severity: "error",
+                  // Mandatory
+                  message: "Invalid keyword"
+                  // Optional: the message formatted with source location
+                  formattedMessage: "sourceFile.sol:100: Invalid keyword"
+                }
+              ],
+              // This contains the file-level outputs. In can be limited/filtered by the outputSelection settings.
+              sources: {
+                "sourceFile.sol": {
+                  // Identifier (used in source maps)
+                  id: 1,
+                  // The AST object
+                  ast: {},
+                  // The legacy AST object
+                  legacyAST: {}
+                }
+              },
+              // This contains the contract-level outputs. It can be limited/filtered by the outputSelection settings.
+              contracts: {
+                "sourceFile.sol": {
+                  // If the language used has no contract names, this field should equal to an empty string.
+                  "ContractName": {
+                    // The Ethereum Contract ABI. If empty, it is represented as an empty array.
+                    // See https://github.com/ethereum/wiki/wiki/Ethereum-Contract-ABI
+                    abi: [],
+                    // See the Metadata Output documentation (serialised JSON string)
+                    metadata: "{...}",
+                    // User documentation (natspec)
+                    userdoc: {},
+                    // Developer documentation (natspec)
+                    devdoc: {},
+                    // Intermediate representation (string)
+                    ir: "",
+                    // EVM-related outputs
+                    evm: {
+                      // Assembly (string)
+                      assembly: "",
+                      // Old-style assembly (object)
+                      legacyAssembly: {},
+                      // Bytecode and related details.
+                      bytecode: {
+                        // The bytecode as a hex string.
+                        object: "00fe",
+                        // Opcodes list (string)
+                        opcodes: "",
+                        // The source mapping as a string. See the source mapping definition.
+                        sourceMap: "",
+                        // If given, this is an unlinked object.
+                        linkReferences: {
+                          "libraryFile.sol": {
+                            // Byte offsets into the bytecode. Linking replaces the 20 bytes located there.
+                            "Library1": [
+                              { start: 0, length: 20 },
+                              { start: 200, length: 20 }
+                            ]
+                          }
+                        }
+                      },
+                      // The same layout as above.
+                      deployedBytecode: { },
+                      // The list of function hashes
+                      methodIdentifiers: {
+                        "delegate(address)": "5c19a95c"
+                      },
+                      // Function gas estimates
+                      gasEstimates: {
+                        creation: {
+                          codeDepositCost: "420000",
+                          executionCost: "infinite",
+                          totalCost: "infinite"
+                        },
+                        external: {
+                          "delegate(address)": "25000"
+                        },
+                        internal: {
+                          "heavyLifting()": "infinite"
+                        }
+                      }
+                    },
+                    // eWASM related outputs
+                    ewasm: {
+                      // S-expressions format
+                      wast: "",
+                      // Binary format (hex string)
+                      wasm: ""
+                    }
+                  }
+                }
+              }
+            }</p>
+            <h3>Error types</h3>
+            <p><li>JSONError: JSON input doesn’t conform to the required format, e.g. input is not a JSON object, the language is not supported, etc.</li></p>
+            <p><li>IOError: IO and import processing errors, such as unresolvable URL or hash mismatch in supplied sources.</li></p>
+            <p><li>ParserError: Source code doesn’t conform to the language rules.</li></p>
+            <p><li>DocstringParsingError: The NatSpec tags in the comment block cannot be parsed.</li></p>
+            <p><li>SyntaxError: Syntactical error, such as continue is used outside of a for loop.</li></p>
+            <p><li>DeclarationError: Invalid, unresolvable or clashing identifier names. e.g. Identifier not found</li></p>
+            <p><li>TypeError: Error within the type system, such as invalid type conversions, invalid assignments, etc.</li></p>
+            <p><li>UnimplementedFeatureError: Feature is not supported by the compiler, but is expected to be supported in future versions.</li></p>
+            <p><li>InternalCompilerError: Internal bug triggered in the compiler - this should be reported as an issue.</li></p>
+            <p><li>Exception: Unknown failure during compilation - this should be reported as an issue.</li></p>
+            <p><li>CompilerError: Invalid use of the compiler stack - this should be reported as an issue.</li></p>
+            <p><li>FatalError: Fatal error not processed correctly - this should be reported as an issue.</li></p>
+            <p><li>Warning: A warning, which didn’t stop the compilation, but should be addressed if possible.</li></p>
+            </article>
+            </section> 
+            <section class="main-section" id="contract_metadata">
+            <header>Contract Metadata</header>
+            <p>The Solidity compiler automatically generates a JSON file, the contract metadata, that contains information about the current contract. It can be used to query the compiler version, the sources used, the ABI and NatSpec documentation in order to more safely interact with the contract and to verify its source code.</p>
+            <p>The compiler appends a Swarm hash of the metadata file to the end of the bytecode (for details, see below) of each contract, so that you can retrieve the file in an authenticated way without having to resort to a centralized data provider.</p>
+            <p>Of course, you have to publish the metadata file to Swarm (or some other service) so that others can access it. The file can be output by using solc --metadata and the file will be called ContractName_meta.json. It will contain Swarm references to the source code, so you have to upload all source files and the metadata file.</p>
+            <p>The metadata file has the following format. The example below is presented in a human-readable way. Properly formatted metadata should use quotes correctly, reduce whitespace to a minimum and sort the keys of all objects to arrive at a unique formatting. Comments are of course also not permitted and used here only for explanatory purposes.</p>
+            <code>{
+                // Required: The version of the metadata format
+                version: "1",
+                // Required: Source code language, basically selects a "sub-version"
+                // of the specification
+                language: "Solidity",
+                // Required: Details about the compiler, contents are specific
+                // to the language.
+                compiler: {
+                  // Required for Solidity: Version of the compiler
+                  version: "0.4.6+commit.2dabbdf0.Emscripten.clang",
+                  // Optional: Hash of the compiler binary which produced this output
+                  keccak256: "0x123..."
+                },
+                // Required: Compilation source files/source units, keys are file names
+                sources:
+                {
+                  "myFile.sol": {
+                    // Required: keccak256 hash of the source file
+                    "keccak256": "0x123...",
+                    // Required (unless "content" is used, see below): Sorted URL(s)
+                    // to the source file, protocol is more or less arbitrary, but a
+                    // Swarm URL is recommended
+                    "urls": [ "bzzr://56ab..." ]
+                  },
+                  "mortal": {
+                    // Required: keccak256 hash of the source file
+                    "keccak256": "0x234...",
+                    // Required (unless "url" is used): literal contents of the source file
+                    "content": "contract mortal is owned { function kill() { if (msg.sender == owner) selfdestruct(owner); } }"
+                  }
+                },
+                // Required: Compiler settings
+                settings:
+                {
+                  // Required for Solidity: Sorted list of remappings
+                  remappings: [ ":g/dir" ],
+                  // Optional: Optimizer settings (enabled defaults to false)
+                  optimizer: {
+                    enabled: true,
+                    runs: 500
+                  },
+                  // Required for Solidity: File and name of the contract or library this
+                  // metadata is created for.
+                  compilationTarget: {
+                    "myFile.sol": "MyContract"
+                  },
+                  // Required for Solidity: Addresses for libraries used
+                  libraries: {
+                    "MyLib": "0x123123..."
+                  }
+                },
+                // Required: Generated information about the contract.
+                output:
+                {
+                  // Required: ABI definition of the contract
+                  abi: [ ... ],
+                  // Required: NatSpec user documentation of the contract
+                  userdoc: [ ... ],
+                  // Required: NatSpec developer documentation of the contract
+                  devdoc: [ ... ],
+                }
+              }</code>
+              <h3>Encoding of the Metadata Hash in the Bytecode</h3>
+              <p>Because we might support other ways to retrieve the metadata file in the future, the mapping {"bzzr0": <Swarm hash>} is stored CBOR-encoded. Since the beginning of that encoding is not easy to find, its length is added in a two-byte big-endian encoding. The current version of the Solidity compiler thus adds the following to the end of the deployed bytecode:</p>
+              <code>0xa1 0x65 'b' 'z' 'z' 'r' '0' 0x58 0x20 <32 bytes swarm hash> 0x00 0x29</code>
+              <p>So in order to retrieve the data, the end of the deployed bytecode can be checked to match that pattern and use the Swarm hash to retrieve the file.</p>
+              <h3>Usage for Automatic Interface Generation and NatSpec</h3>
+              <p>The metadata is used in the following way: A component that wants to interact with a contract (e.g. Mist) retrieves the code of the contract, from that the Swarm hash of a file which is then retrieved. That file is JSON-decoded into a structure like above.</p>
+              <p>The component can then use the ABI to automatically generate a rudimentary user interface for the contract</p>
+              <p>Furthermore, Mist can use the userdoc to display a confirmation message to the user whenever they interact with the contract.</p>
+              <p>Additional information about Ethereum Natural Specification (NatSpec) can be found here.</p>
+              <h3>Usage for Source Code Verification</h3>
+              <p>In order to verify the compilation, sources can be retrieved from Swarm via the link in the metadata file. The compiler of the correct version (which is checked to be part of the “official” compilers) is invoked on that input with the specified settings. The resulting bytecode is compared to the data of the creation transaction or CREATE opcode data. This automatically verifies the metadata since its hash is part of the bytecode. Excess data corresponds to the constructor input data, which should be decoded according to the interface and presented to the user.</p>
+          </article>
+          </section>
+       
+        <section class="main-section" id="application_binary_interface_specification">
+          <header>Application Binary Interface Specification</header>
+          <article>
+          <h2>Basic Design</h2>
+          <p>The Contract Application Binary Interface (ABI) is the standard way to interact with contracts in the Ethereum ecosystem, both from outside the blockchain and for contract-to-contract interaction. Data is encoded according to its type, as described in this specification. The encoding is not self describing and thus requires a schema in order to decode.</p>
+          <p>We assume the interface functions of a contract are strongly typed, known at compilation time and static. We assume that all contracts will have the interface definitions of any contracts they call available at compile-time.</p>
+          <p>This specification does not address contracts whose interface is dynamic or otherwise known only at run-time.</p>
+          <h2>Function Selector</h2>
+          <p>The first four bytes of the call data for a function call specifies the function to be called. It is the first (left, high-order in big-endian) four bytes of the Keccak-256 (SHA-3) hash of the signature of the function. The signature is defined as the canonical expression of the basic prototype without data location specifier, i.e. the function name with the parenthesised list of parameter types. Parameter types are split by a single comma - no spaces are used.</p>
+          <h2>Argument Encoding</h2>
+          <p>Starting from the fifth byte, the encoded arguments follow. This encoding is also used in other places, e.g. the return values and also event arguments are encoded in the same way, without the four bytes specifying the function.</p>
+          <h2>Types</h2>
+          <p>The following elementary types exist:</p>
+        <ul>
+          <li>uint<M>: unsigned integer type of M bits, 0 < M <= 256, M % 8 == 0. e.g. uint32, uint8, uint256.</li>
+          <li>int<M>: two’s complement signed integer type of M bits, 0 < M <= 256, M % 8 == 0.</li>
+          <li>address: equivalent to uint160, except for the assumed interpretation and language typing. For computing the function selector, address is used.</li>
+          <li>uint, int: synonyms for uint256, int256 respectively. For computing the function selector, uint256 and int256 have to be used.</li>
+          <li>bool: equivalent to uint8 restricted to the values 0 and 1. For computing the function selector, bool is used.</li>
+          <li>fixed<M>x<N>: signed fixed-point decimal number of M bits, 8 <= M <= 256, M % 8 ==0, and 0 < N <= 80, which denotes the value v as v / (10 ** N).</li>
+          <li>ufixed<M>x<N>: unsigned variant of fixed<M>x<N>.</li>
+          <li>fixed, ufixed: synonyms for fixed128x18, ufixed128x18 respectively. For computing the function selector, fixed128x18 and ufixed128x18 have to be used.</li>
+          <li>bytes<M>: binary type of M bytes, 0 < M <= 32.</li>
+          <li>function: an address (20 bytes) followed by a function selector (4 bytes). Encoded identical to bytes24.</li>
+        </ul>
+        <p>The following (fixed-size) array type exists:</p>
+        <ul>
+            <li><type>[M]: a fixed-length array of M elements, M >= 0, of the given type.</li>
+        </ul>
+        <p>The following non-fixed-size types exist:</p>
+        <ul>
+            <li>bytes: dynamic sized byte sequence.</li>
+            <li>string: dynamic sized unicode string assumed to be UTF-8 encoded.</li>
+            <li><type>[]: a variable-length array of elements of the given type.</li>
+        </ul>
+        <p>Types can be combined to a tuple by enclosing them inside parentheses, separated by commas:</p>
+        <ul>
+            <li>(T1,T2,...,Tn): tuple consisting of the types T1, …, Tn, n >= 0</li>
+        </ul>
+        <p>It is possible to form tuples of tuples, arrays of tuples and so on. It is also possible to form zero-tuples (where n == 0).</p>
+        <h2>Mapping Solidity to ABI types</h2>
+        <p>Solidity supports all the types presented above with the same names with the exception of tuples. On the other hand, some Solidity types are not supported by the ABI. The following table shows on the left column Solidity types that are not part of the ABI, and on the right column the ABI types that represent them.</p>
+        <table style="width:100%">
+                <tr>
+                  <th>Solidity</th>
+                  <th>ABI</th> 
+                </tr>
+                <tr>
+                  <td>address payable</td>
+                  <td>address</td> 
+                  
+                </tr>
+                <tr>
+                  <td>contract</td>
+                  <td>address</td> 
+                </tr>
+                <tr>
+                    <td>enum</td>
+                    <td>smallest uint type that is large enough to hold all values
+
+                            For example, an enum of 255 values or less is mapped to uint8 and an enum of 256 values is mapped to uint16.</td>
+                </tr>
+                <tr>
+                    <td>struct</td>
+                    <td>tuple</td>
+                </tr>
+              </table>
+        </article>
+        </section>
+        <section class="main-section" id="style_guide">
+          <header>Style Guide</header>
+          <article>
+          <h2>Introduction</h2>
+          <p>This guide is intended to provide coding conventions for writing solidity code. This guide should be thought of as an evolving document that will change over time as useful conventions are found and old conventions are rendered obsolete.</p>
+          <p>Many projects will implement their own style guides. In the event of conflicts, project specific style guides take precedence.</p>
+          <p>The structure and many of the recommendations within this style guide were taken from python’s <a href="https://www.python.org/dev/peps/pep-0008/">pep8 style guide </a>.</p>
+          <code> A style guide is about consistency. Consistency with this style guide is important. Consistency within a project is more important. Consistency within one module or function is most important. But most importantly: know when to be inconsistent – sometimes the style guide just doesn’t apply. When in doubt, use your best judgement. Look at other examples and decide what looks best. And don’t hesitate to ask!</code>
+          <h2>Code Layout</h2>
+          <h3>Indentation</h3>
+          <p>Use 4 spaces per indentation level.</p>
+          <h3>Tabs or Spaces</h3>
+          <p>Spaces are the preferred indentation method.</p>
+          <p>Mixing tabs and spaces should be avoided.</p>
+          <h3>Blank Lines</h3>
+          <p>Surround top level declarations in solidity source with two blank lines.</p>  
+          <p>Yes:</p>
+          <code>
+pragma solidity 0.6.0;
+
+contract A {
+    // ...
+}
+
+
+contract B {
+    // ...
+}
+
+
+contract C {
+    // ...
+}
+          </code>
+          <p>No:</p>
+          <code>
+pragma solidity 0.6.0;
+
+contract A {
+// ...
+}
+contract B {
+// ...
+}
+                
+contract C {
+// ...
+}
+          </code>
+          <p>Within a contract surround function declarations with a single blank line.</p>
+          <p>Blank lines may be omitted between groups of related one-liners (such as stub functions for an abstract contract)</p>
+          <p>Yes:</p>
+          <code>
+                pragma solidity 0.6.0;
+
+                contract A {
+                    function spam() public pure;
+                    function ham() public pure;
+                }
+                
+                
+                contract B is A {
+                    function spam() public pure {
+                        // ...
+                    }
+                
+                    function ham() public pure {
+                        // ...
+                    }
+                }
+          </code>
+          <p>No:</p>
+          <code>
+                pragma solidity 0.6.0;
+
+                contract A {
+                    function spam() public pure {
+                        // ...
+                    }
+                    function ham() public pure {
+                        // ...
+                    }
+                }
+          </code>
+          <h3>Maximum Line Length</h3>
+          <p>Keeping lines under the <a href="https://www.python.org/dev/peps/pep-0008/#maximum-line-length">PEP 8 recommendation</a> to a maximum of 79 (or 99) characters helps readers easily parse the code.</p>
+          <p>Wrapped lines should conform to the following guidelines.</p>
+          <p>
+              <li>
+              <ol>The first argument should not be attached to the opening parenthesis.</ol>
+              <ol>One, and only one, indent should be used.</ol>
+              <ol>Each argument should fall on its own line.</ol>
+              <ol>The terminating element, ");", should be placed on the final line by itself.</ol>
+              </li>
+          </p>
+          <p>Function Calls</p>
+          <p>Yes:</p>
+          <code>
+thisFunctionCallIsReallyLong(
+    longArgument1,
+    longArgument2,
+    longArgument3
+);
+          </code>
+          <p>No:</p>
+          <code>
+thisFunctionCallIsReallyLong(longArgument1,
+longArgument2,
+longArgument3
+);
+
+thisFunctionCallIsReallyLong(longArgument1,
+longArgument2,
+longArgument3
+);
+
+thisFunctionCallIsReallyLong(
+longArgument1, longArgument2,
+longArgument3
+);
+
+thisFunctionCallIsReallyLong(
+longArgument1,
+longArgument2,
+longArgument3
+);
+
+thisFunctionCallIsReallyLong(
+longArgument1,
+longArgument2,
+longArgument3);
+          </code>
+<p>Assignment Statements</p>
+<p>Yes:</p>
+          <code>
+thisIsALongNestedMapping[being][set][to_some_value] = someFunction(
+argument1,
+argument2,
+argument3,
+argument4
+);
+          </code>
+<p>No:</p>
+<code>
+thisIsALongNestedMapping[being][set][to_some_value] = someFunction(argument1,
+    argument2,
+    argument3,
+    argument4);
+</code>
+<p>Event Definitions and Event Emitters</p>
+<p>Yes:</p>
+<code>
+event LongAndLotsOfArgs(
+    address sender,
+    address recipient,
+    uint256 publicKey,
+    uint256 amount,
+    bytes32[] options
+);
+        
+LongAndLotsOfArgs(
+    sender,
+    recipient,
+    publicKey,
+    amount,
+    options
+);
+</code>
+<p>No:</p>
+<code>
+event LongAndLotsOfArgs(address sender,
+    address recipient,
+    uint256 publicKey,
+    uint256 amount,
+    bytes32[] options);
+
+LongAndLotsOfArgs(sender,
+    recipient,
+    publicKey,
+    amount,
+    options);
+</code>
+<h3>Source File Encoding</h3>
+<p>UTF-8 or ASCII encoding is preferred.</p>
+</article>
+</section>
+        <section class="main-section" id="Common Patterns">
+        <article>
+          <header>Common Patterns</header>
+          <h2>Withdrawal from Contracts</h2>
+          <p>The recommended method of sending funds after an effect is using the withdrawal pattern. Although the most intuitive method of sending Ether, as a result of an effect, is a direct transfer call, this is not recommended as it introduces a potential security risk. You may read more about this on the Security Considerations page.</p>
+          <p>The following is an example of the withdrawal pattern in practice in a contract where the goal is to send the most money to the contract in order to become the “richest”, inspired by King of the Ether.</p>
+          <p>In the following contract, if you are usurped as the richest, you will receive the funds of the person who has gone on to become the new richest.</p>
+          <code>pragma solidity 0.6.0;
+
+            contract WithdrawalContract {
+                address public richest;
+                uint public mostSent;
+            
+                mapping (address => uint) pendingWithdrawals;
+            
+                constructor() public payable {
+                    richest = msg.sender;
+                    mostSent = msg.value;
+                }
+            
+                function becomeRichest() public payable returns (bool) {
+                    if (msg.value > mostSent) {
+                        pendingWithdrawals[richest] += msg.value;
+                        richest = msg.sender;
+                        mostSent = msg.value;
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            
+                function withdraw() public {
+                    uint amount = pendingWithdrawals[msg.sender];
+                    // Remember to zero the pending refund before
+                    // sending to prevent re-entrancy attacks
+                    pendingWithdrawals[msg.sender] = 0;
+                    msg.sender.transfer(amount);
+                }
+            }</code>
+            <p>This is as opposed to the more intuitive sending pattern:</p>
+            <code>pragma solidity >0.4.99 <0.6.0;
+
+                contract SendContract {
+                    address payable public richest;
+                    uint public mostSent;
+                
+                    constructor() public payable {
+                        richest = msg.sender;
+                        mostSent = msg.value;
+                    }
+                
+                    function becomeRichest() public payable returns (bool) {
+                        if (msg.value > mostSent) {
+                            // This line can cause problems (explained below).
+                            richest.transfer(msg.value);
+                            richest = msg.sender;
+                            mostSent = msg.value;
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
+                }</code>
+      <p>Notice that, in this example, an attacker could trap the contract into an unusable state by causing richest to be the address of a contract that has a fallback function which fails (e.g. by using revert() or by just consuming more than the 2300 gas stipend transferred to them). That way, whenever transfer is called to deliver funds to the “poisoned” contract, it will fail and thus also becomeRichest will fail, with the contract being stuck forever.</p>
+      <p>In contrast, if you use the “withdraw” pattern from the first example, the attacker can only cause his or her own withdraw to fail and not the rest of the contract’s workings.</p>
+      <h2>Restricting Access</h2>
+      <p>Restricting access is a common pattern for contracts. Note that you can never restrict any human or computer from reading the content of your transactions or your contract’s state. You can make it a bit harder by using encryption, but if your contract is supposed to read the data, so will everyone else.Restricting access is a common pattern for contracts. Note that you can never restrict any human or computer from reading the content of your transactions or your contract’s state. You can make it a bit harder by using encryption, but if your contract is supposed to read the data, so will everyone else.</p>
+      <p>You can restrict read access to your contract’s state by other contracts. That is actually the default unless you declare make your state variables public.</p>
+      <p>Furthermore, you can restrict who can make modifications to your contract’s state or call your contract’s functions and this is what this section is about.</p>
+      <p>The use of function modifiers makes these restrictions highly readable.</p>
+      <code>
+            pragma solidity 0.6.0;
+
+            contract AccessRestriction {
+                // These will be assigned at the construction
+                // phase, where `msg.sender` is the account
+                // creating this contract.
+                address public owner = msg.sender;
+                uint public creationTime = now;
+            
+                // Modifiers can be used to change
+                // the body of a function.
+                // If this modifier is used, it will
+                // prepend a check that only passes
+                // if the function is called from
+                // a certain address.
+                modifier onlyBy(address _account)
+                {
+                    require(
+                        msg.sender == _account,
+                        "Sender not authorized."
+                    );
+                    // Do not forget the "_;"! It will
+                    // be replaced by the actual function
+                    // body when the modifier is used.
+                    _;
+                }
+            
+                /// Make `_newOwner` the new owner of this
+                /// contract.
+                function changeOwner(address _newOwner)
+                    public
+                    onlyBy(owner)
+                {
+                    owner = _newOwner;
+                }
+            
+                modifier onlyAfter(uint _time) {
+                    require(
+                        now >= _time,
+                        "Function called too early."
+                    );
+                    _;
+                }
+            
+                /// Erase ownership information.
+                /// May only be called 6 weeks after
+                /// the contract has been created.
+                function disown()
+                    public
+                    onlyBy(owner)
+                    onlyAfter(creationTime + 6 weeks)
+                {
+                    delete owner;
+                }
+            
+                // This modifier requires a certain
+                // fee being associated with a function call.
+                // If the caller sent too much, he or she is
+                // refunded, but only after the function body.
+                // This was dangerous before Solidity version 0.4.0,
+                // where it was possible to skip the part after `_;`.
+                modifier costs(uint _amount) {
+                    require(
+                        msg.value >= _amount,
+                        "Not enough Ether provided."
+                    );
+                    _;
+                    if (msg.value > _amount)
+                        msg.sender.transfer(msg.value - _amount);
+                }
+            
+                function forceOwnerChange(address _newOwner)
+                    public
+                    payable
+                    costs(200 ether)
+                {
+                    owner = _newOwner;
+                    // just some example condition
+                    if (uint(owner) & 0 == 1)
+                        // This did not refund for Solidity
+                        // before version 0.4.0.
+                        return;
+                    // refund overpaid fees
+                }
+            }
+      </code>
+      <p>A more specialised way in which access to function calls can be restricted will be discussed in the next example.</p>
+      <h2>State Machine</h2>
+      <p>Contracts often act as a state machine, which means that they have certain stages in which they behave differently or in which different functions can be called. A function call often ends a stage and transitions the contract into the next stage (especially if the contract models interaction). It is also common that some stages are automatically reached at a certain point in time.</p>
+      <p>An example for this is a blind auction contract which starts in the stage “accepting blinded bids”, then transitions to “revealing bids” which is ended by “determine auction outcome”.</p>
+      <p>Function modifiers can be used in this situation to model the states and guard against incorrect usage of the contract.</p>
+      <h2>Example</h2>
+      <p>In the following example, the modifier atStage ensures that the function can only be called at a certain stage.</p>
+      <p>Automatic timed transitions are handled by the modifier timeTransitions, which should be used for all functions.</p>
+      <p>Finally, the modifier transitionNext can be used to automatically go to the next stage when the function finishes.</p>
+      <code>
+            pragma solidity 0.6.0;
+
+            contract StateMachine {
+                enum Stages {
+                    AcceptingBlindedBids,
+                    RevealBids,
+                    AnotherStage,
+                    AreWeDoneYet,
+                    Finished
+                }
+            
+                // This is the current stage.
+                Stages public stage = Stages.AcceptingBlindedBids;
+            
+                uint public creationTime = now;
+            
+                modifier atStage(Stages _stage) {
+                    require(
+                        stage == _stage,
+                        "Function cannot be called at this time."
+                    );
+                    _;
+                }
+            
+                function nextStage() internal {
+                    stage = Stages(uint(stage) + 1);
+                }
+            
+                // Perform timed transitions. Be sure to mention
+                // this modifier first, otherwise the guards
+                // will not take the new stage into account.
+                modifier timedTransitions() {
+                    if (stage == Stages.AcceptingBlindedBids &&
+                                now >= creationTime + 10 days)
+                        nextStage();
+                    if (stage == Stages.RevealBids &&
+                            now >= creationTime + 12 days)
+                        nextStage();
+                    // The other stages transition by transaction
+                    _;
+                }
+            
+                // Order of the modifiers matters here!
+                function bid()
+                    public
+                    payable
+                    timedTransitions
+                    atStage(Stages.AcceptingBlindedBids)
+                {
+                    // We will not implement that here
+                }
+            
+                function reveal()
+                    public
+                    timedTransitions
+                    atStage(Stages.RevealBids)
+                {
+                }
+            
+                // This modifier goes to the next stage
+                // after the function is done.
+                modifier transitionNext()
+                {
+                    _;
+                    nextStage();
+                }
+            
+                function g()
+                    public
+                    timedTransitions
+                    atStage(Stages.AnotherStage)
+                    transitionNext
+                {
+                }
+            
+                function h()
+                    public
+                    timedTransitions
+                    atStage(Stages.AreWeDoneYet)
+                    transitionNext
+                {
+                }
+            
+                function i()
+                    public
+                    timedTransitions
+                    atStage(Stages.Finished)
+                {
+                }
+            }
+      </code>
+          </article>
+          </section>
+        <section class="main-section" id="list_of_known_bugs">
+          <header>List of Known Bugs</header>
+          <article> 
+          <p>Below, you can find a JSON-formatted list of some of the known security-relevant bugs in the Solidity compiler. The file itself is hosted in the Github repository. The list stretches back as far as version 0.3.0, bugs known to be present only in versions preceding that are not listed.</p>
+          <p>There is another file called bugs_by_version.json, which can be used to check which bugs affect a specific version of the compiler.</p>
+          <p>Contract source verification tools and also other tools interacting with contracts should consult this list according to the following criteria:</p>
+          <li>
+              <ul>It is mildly suspicious if a contract was compiled with a nightly compiler version instead of a released version. This list does not keep track of unreleased or nightly versions.</ul>
+              <ul>It is also mildly suspicious if a contract was compiled with a version that was not the most recent at the time the contract was created. For contracts created from other contracts, you have to follow the creation chain back to a transaction and use the date of that transaction as creation date.</ul>
+              <ul>It is highly suspicious if a contract was compiled with a compiler that contains a known bug and the contract was created at a time where a newer compiler version containing a fix was already released.</ul>
+          </li>
+          </article>
+          </section>
+        <section class="main-section" id="Contributing">
+          <header>Contributing</header>
+          <article>
+            <h2>Contributing</h2>
+            <p>Help is always appreciated!</p>
+            <p>To get started, you can try Building from Source in order to familiarize yourself with the components of Solidity and the build process. Also, it may be useful to become well-versed at writing smart-contracts in Solidity.</p>
+            <p>In particular, we need help in the following areas:</p>
+            <li>
+                <ul>Improving the documentation</ul>
+                <ul>Responding to questions from other users on StackExchange and the Solidity Gitter</ul>
+                <ul>Fixing and responding to Solidity’s GitHub issues, especially those tagged as good first issue which are meant as introductory issues for external contributors.</ul>
+            </li>
+            <p>Please note that this project is released with a Contributor Code of Conduct. By participating in this project - in the issues, pull requests, or Gitter channels - you agree to abide by its terms.</p>
+            <h2>How to Report Issues</h2>
+            <p>To report an issue, please use the GitHub issues tracker. When reporting issues, please mention the following details:</p>
+            <li>
+                <ul>Which version of Solidity you are using</ul>
+                <ul>What was the source code (if applicable)</ul>
+                <ul>Which platform are you running on</ul>
+                <ul>How to reproduce the issue</ul>
+                <ul>What was the result of the issue</ul>
+                <ul>What the expected behaviour is</ul>
+            </li>
+            <p>Reducing the source code that caused the issue to a bare minimum is always very helpful and sometimes even clarifies a misunderstanding.</p>
+            <h2>Workflow for Pull Requests</h2>
+            <p>In order to contribute, please fork off of the develop branch and make your changes there. Your commit messages should detail why you made your change in addition to what you did (unless it is a tiny change).</p>
+            <p>If you need to pull in any changes from develop after making your fork (for example, to resolve potential merge conflicts), please avoid using git merge and instead, git rebase your branch. This will help us review your change more easily.</p>
+            <p>Additionally, if you are writing a new feature, please ensure you add appropriate test cases under test/ (see below).</p>
+            <p>However, if you are making a larger change, please consult with the Solidity Development Gitter channel (different from the one mentioned above, this one is focused on compiler and language development instead of language use) first.</p>
+            <p>New features and bugfixes should be added to the Changelog.md file: please follow the style of previous entries, when applicable.</p>
+            <p>Finally, please make sure you respect the coding style for this project. Also, even though we do CI testing, please test your code and ensure that it builds locally before submitting a pull request.</p>
+            <p>Thank you for your help!</p>
+          </article>
+          </section>
+      </main>
+</body>
+</html>
